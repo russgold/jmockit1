@@ -18,7 +18,7 @@ import static mockit.Deencapsulation.*;
 @SuppressWarnings("unused")
 public final class DeencapsulationTest
 {
-   @Rule public ExpectedException thrown = ExpectedException.none();
+   @Rule public final ExpectedException thrown = ExpectedException.none();
 
    static final class Subclass extends BaseClass
    {
@@ -315,7 +315,7 @@ public final class DeencapsulationTest
    }
 
    @Test
-   public void setStaticFinalFields()
+   public void setStaticFinalFields() throws Exception
    {
       setField(Subclass.class, "constantField", 54);
       setField(Subclass.class, "changed");
@@ -487,7 +487,8 @@ public final class DeencapsulationTest
    @Test
    public void newInstanceUsingNoArgsConstructorFromSpecifiedParameterTypes()
    {
-      Subclass instance = newInstance(Subclass.class.getName(), new Class<?>[] {});
+      Class<?>[] parameterTypes = {};
+      Subclass instance = newInstance(Subclass.class.getName(), (Object[]) parameterTypes);
 
       assertNotNull(instance);
       assertEquals(-1, instance.getIntField());

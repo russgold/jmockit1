@@ -9,10 +9,22 @@ import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 
+import static java.lang.reflect.Modifier.FINAL;
+import static java.lang.reflect.Modifier.isFinal;
 import static java.lang.reflect.Modifier.isStatic;
+
+import static mockit.internal.util.Utilities.ensureThatMemberIsAccessible;
 
 public final class FieldReflection
 {
+   private static final Field MODIFIERS_FIELD;
+   static
+   {
+      try { MODIFIERS_FIELD = Field.class.getDeclaredField("modifiers"); }
+      catch (NoSuchFieldException e) { throw new RuntimeException(e); }
+      MODIFIERS_FIELD.setAccessible(true);
+   }
+
    private FieldReflection() {}
 
    @Nullable
@@ -43,7 +55,7 @@ public final class FieldReflection
    @Nullable
    public static <T> T getFieldValue(@Nonnull Field field, @Nullable Object targetObject)
    {
-      Utilities.ensureThatMemberIsAccessible(field);
+      ensureThatMemberIsAccessible(field);
 
       try {
          //noinspection unchecked
@@ -185,12 +197,25 @@ public final class FieldReflection
    public static void setFieldValue(@Nonnull Field field, @Nullable Object targetObject, @Nullable Object value)
    {
       try {
-         Utilities.ensureThatMemberIsAccessible(field);
-         field.set(targetObject, value);
+         if (isStatic(field.getModifiers()) && isFinal(field.getModifiers())) {
+            setStaticFinalField(field, value);
+         }
+         else {
+            ensureThatMemberIsAccessible(field);
+            field.set(targetObject, value);
+         }
       }
       catch (IllegalAccessException e) {
          throw new RuntimeException(e);
       }
    }
 
+   private static void setStaticFinalField(@Nonnull Field field, @Nullable Object value) throws IllegalAccessException
+   {
+      int nonFinalModifiers = MODIFIERS_FIELD.getInt(field) - FINAL;
+      MODIFIERS_FIELD.setInt(field, nonFinalModifiers);
+
+      ensureThatMemberIsAccessible(field);
+      field.set(null, value);
+   }
 }
