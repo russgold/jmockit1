@@ -12,8 +12,8 @@ import mockit.external.asm.*;
 import mockit.internal.*;
 import mockit.internal.mockups.MockMethods.*;
 import mockit.internal.state.*;
+import mockit.internal.util.*;
 import static mockit.external.asm.Opcodes.*;
-import static mockit.internal.util.GeneratedClasses.*;
 
 /**
  * Responsible for generating all necessary bytecode in the redefined (real) class.
@@ -58,7 +58,7 @@ final class MockupsModifier extends BaseClassModifier
       this.mockMethods = mockMethods;
 
       ClassLoader classLoaderOfRealClass = realClass.getClassLoader();
-      useMockingBridgeForUpdatingMockState = isClassLoaderWithNoDirectAccess(classLoaderOfRealClass);
+      useMockingBridgeForUpdatingMockState = ClassLoad.isClassLoaderWithNoDirectAccess(classLoaderOfRealClass);
       inferUseOfMockingBridge(classLoaderOfRealClass, mockUp);
    }
 
@@ -68,18 +68,6 @@ final class MockupsModifier extends BaseClassModifier
 
       if (!useMockingBridge && !isPublic(mock.getClass().getModifiers())) {
          useMockingBridge = true;
-      }
-   }
-
-   @Override
-   public void visit(
-      int version, int access, @Nonnull String name, @Nullable String signature, @Nullable String superName,
-      @Nullable String[] interfaces)
-   {
-      super.visit(version, access, name, signature, superName, interfaces);
-
-      if (isGeneratedImplementationClass(name)) {
-         classDesc = name.substring(IMPLCLASS_PREFIX.length());
       }
    }
 
@@ -321,7 +309,8 @@ final class MockupsModifier extends BaseClassModifier
 
    private boolean generateArgumentsForMockMethodInvocation()
    {
-      Type[] argTypes = Type.getArgumentTypes(mockMethod.mockDescWithoutInvocationParameter);
+      String mockedDesc = mockMethod.isAdvice ? methodDesc : mockMethod.mockDescWithoutInvocationParameter;
+      Type[] argTypes = Type.getArgumentTypes(mockedDesc);
       int varIndex = isStatic(methodAccess) ? 0 : 1;
       boolean canProceedIntoConstructor = false;
 
@@ -335,17 +324,19 @@ final class MockupsModifier extends BaseClassModifier
          }
       }
 
-      boolean forGenericMethod = mockMethod.isForGenericMethod();
+      if (!mockMethod.isAdvice) {
+         boolean forGenericMethod = mockMethod.isForGenericMethod();
 
-      for (Type argType : argTypes) {
-         int opcode = argType.getOpcode(ILOAD);
-         mw.visitVarInsn(opcode, varIndex);
+         for (Type argType : argTypes) {
+            int opcode = argType.getOpcode(ILOAD);
+            mw.visitVarInsn(opcode, varIndex);
 
-         if (forGenericMethod && argType.getSort() >= Type.ARRAY) {
-            mw.visitTypeInsn(CHECKCAST, argType.getInternalName());
+            if (forGenericMethod && argType.getSort() >= Type.ARRAY) {
+               mw.visitTypeInsn(CHECKCAST, argType.getInternalName());
+            }
+
+            varIndex += argType.getSize();
          }
-
-         varIndex += argType.getSize();
       }
 
       return canProceedIntoConstructor;
@@ -379,7 +370,7 @@ final class MockupsModifier extends BaseClassModifier
 
    private void generateMethodReturn()
    {
-      if (shouldUseMockingBridge()) {
+      if (shouldUseMockingBridge() || mockMethod.isAdvice) {
          generateReturnWithObjectAtTopOfTheStack(methodDesc);
       }
       else {

@@ -39,9 +39,7 @@ public final class MockInvocation extends BaseInvocation
       @Nullable Object invokedInstance, @Nonnull Object[] invokedArguments, @Nonnull MockState mockState,
       @Nonnull String mockedClassDesc, @Nonnull String mockedMethodName, @Nonnull String mockedMethodDesc)
    {
-      super(
-         invokedInstance, invokedArguments,
-         mockState.getTimesInvoked(), mockState.getMinInvocations(), mockState.getMaxInvocations());
+      super(invokedInstance, invokedArguments, mockState.getTimesInvoked());
       this.mockState = mockState;
       this.mockedClassDesc = mockedClassDesc;
       this.mockedMethodName = mockedMethodName;
@@ -51,6 +49,13 @@ public final class MockInvocation extends BaseInvocation
    @Nonnull @Override
    protected Member findRealMember()
    {
+      Object invokedInstance = getInvokedInstance();
+
+      if (invokedInstance != null) {
+         Class<?> mockedClass = invokedInstance.getClass();
+         return mockState.getRealMethodOrConstructor(mockedClass, mockedMethodName, mockedMethodDesc);
+      }
+
       return mockState.getRealMethodOrConstructor(mockedClassDesc, mockedMethodName, mockedMethodDesc);
    }
 

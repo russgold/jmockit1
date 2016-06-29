@@ -176,15 +176,40 @@ public final class TestedClassWithGenericsTest
 
    static class TestedClassWithConstructorParameterOfGenericType
    {
-      private final GenericClass<?> dependency;
-      TestedClassWithConstructorParameterOfGenericType(GenericClass<?> dependency) { this.dependency = dependency; }
+      private final Class<?> aClass;
+      TestedClassWithConstructorParameterOfGenericType(Class<?> aClass) { this.aClass = aClass; }
    }
 
+   @Tested final Class<?> aClass = Long.class;
    @Tested(fullyInitialized = true) TestedClassWithConstructorParameterOfGenericType tested6;
 
    @Test
    public void verifyInstantiationOfClassWithConstructorParameterOfGenericType()
    {
-      assertNotNull(tested6.dependency);
+      assertSame(aClass, tested6.aClass);
+   }
+
+   static class GenericClassWithDependencyUsingTypeParameter<T> { GenericClass<T> dependency; }
+
+   @Tested final GenericClass<String> dependency = new GenericClass<String>();
+   @Tested(fullyInitialized = true) GenericClassWithDependencyUsingTypeParameter<String> tested7;
+
+   @Test
+   public void verifyInstantiationOfGenericClassWithDependencyUsingTypeParameter()
+   {
+      assertSame(dependency, tested7.dependency);
+   }
+
+   public interface Interface {}
+   static class Implementation implements Interface {}
+   static class Derived2 extends Base<Interface> {}
+
+   @Tested Implementation impl;
+   @Tested(fullyInitialized = true) Derived2 tested;
+
+   @Test
+   public void useTestedObjectOfImplementationTypeForTypeVariableInGenericBaseClass()
+   {
+      assertSame(impl, tested.dep);
    }
 }

@@ -53,17 +53,7 @@ public class BaseClassModifier extends ClassVisitor
 
    protected final void setUseMockingBridge(@Nullable ClassLoader classLoader)
    {
-      useMockingBridge = isClassLoaderWithNoDirectAccess(classLoader);
-   }
-
-   protected final boolean isClassLoaderWithNoDirectAccess(@Nullable ClassLoader classLoader)
-   {
-      if (classLoader == null) {
-         return true;
-      }
-
-      ClassLoader thisCL = getClass().getClassLoader();
-      return classLoader != thisCL && classLoader.getParent() != thisCL;
+      useMockingBridge = ClassLoad.isClassLoaderWithNoDirectAccess(classLoader);
    }
 
    @Override
@@ -137,11 +127,10 @@ public class BaseClassModifier extends ClassVisitor
 
    protected final boolean generateCodeToPassThisOrNullIfStaticMethod()
    {
-      return generateCodeToPassThisOrNullIfStaticMethod(mw, methodAccess, methodName);
+      return generateCodeToPassThisOrNullIfStaticMethod(mw, methodAccess);
    }
 
-   public static boolean generateCodeToPassThisOrNullIfStaticMethod(
-      @Nonnull MethodWriter mw, int access, @SuppressWarnings("unused") @Nonnull String name)
+   public static boolean generateCodeToPassThisOrNullIfStaticMethod(@Nonnull MethodWriter mw, int access)
    {
       boolean isStatic = isStatic(access);
 
@@ -179,8 +168,8 @@ public class BaseClassModifier extends ClassVisitor
 
    protected final void generateCodeToObtainInstanceOfMockingBridge(@Nonnull MockingBridge mockingBridge)
    {
-      mw.visitFieldInsn(
-         GETSTATIC, "java/lang/NegativeArraySizeException", mockingBridge.id, "Ljava/lang/reflect/InvocationHandler;");
+      String hostClassName = MockingBridge.getHostClassName();
+      mw.visitFieldInsn(GETSTATIC, hostClassName, mockingBridge.id, "Ljava/lang/reflect/InvocationHandler;");
    }
 
    protected final void generateCodeToFillArrayElement(int arrayIndex, @Nullable Object value)

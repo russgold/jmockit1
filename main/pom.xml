@@ -4,7 +4,7 @@
    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
    <modelVersion>4.0.0</modelVersion>
 
-   <groupId>org.jmockit</groupId><artifactId>jmockit</artifactId><version>1.24</version>
+   <groupId>org.jmockit</groupId><artifactId>jmockit</artifactId><version>1.25</version>
    <packaging>jar</packaging>
 
    <name>Main</name>
@@ -54,8 +54,16 @@
          <resource>
             <directory>.</directory>
             <includes>
-               <include>META-INF/services/org.junit.gen5.engine.TestEngine</include>
+               <include>META-INF/services/org.junit.platform.engine.TestEngine</include>
                <include>META-INF/services/org.testng.ITestNGListener</include>
+            </includes>
+         </resource>
+         <resource>
+            <directory>src</directory>
+            <includes>
+               <include>**/*.css</include>
+               <include>**/*.js</include>
+               <include>**/*.png</include>
             </includes>
          </resource>
          <resource>
@@ -103,16 +111,26 @@
                <archive>
                   <addMavenDescriptor>false</addMavenDescriptor>
                   <manifestEntries>
+                     <Main-Class>mockit.coverage.CodeCoverage</Main-Class>
                      <Premain-Class>mockit.internal.startup.Startup</Premain-Class>
                      <Agent-Class>mockit.internal.startup.Startup</Agent-Class>
                      <Can-Redefine-Classes>true</Can-Redefine-Classes>
                      <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                     <Implementation-Version>${project.version}</Implementation-Version>
+                     <Built-By/>
                   </manifestEntries>
                </archive>
             </configuration>
          </plugin>
          <plugin>
             <artifactId>maven-source-plugin</artifactId><version>3.0.0</version>
+            <configuration>
+               <excludes>
+                  <exclude>*</exclude>
+                  <exclude>**/*.css</exclude>
+                  <exclude>**/*.js</exclude>
+               </excludes>
+            </configuration>
             <executions>
                <execution>
                   <id>attach-sources</id>
@@ -216,6 +234,15 @@
       </plugins>
    </build>
 
+   <repositories>
+      <repository>
+         <id>snapshots-repo</id>
+         <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+         <releases><enabled>false</enabled></releases>
+         <snapshots><enabled>true</enabled></snapshots>
+      </repository>
+   </repositories>
+
    <dependencies>
       <dependency>
          <groupId>com.google.code.findbugs</groupId><artifactId>jsr305</artifactId><version>3.0.0</version>
@@ -226,7 +253,7 @@
          <optional>true</optional>
       </dependency>
       <dependency>
-         <groupId>org.junit</groupId><artifactId>junit5-engine</artifactId><version>5.0.0-SNAPSHOT</version>
+         <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-engine</artifactId><version>5.0.0-SNAPSHOT</version>
          <optional>true</optional>
       </dependency>
       <dependency>
@@ -235,9 +262,6 @@
          <exclusions>
             <exclusion><groupId>com.google.inject</groupId><artifactId>guice</artifactId></exclusion>
             <exclusion><groupId>org.beanshell</groupId><artifactId>bsh</artifactId></exclusion>
-            <exclusion><groupId>org.apache.ant</groupId><artifactId>ant</artifactId></exclusion>
-            <exclusion><groupId>org.yaml</groupId><artifactId>snakeyaml</artifactId></exclusion>
-            <exclusion><groupId>junit</groupId><artifactId>junit</artifactId></exclusion>
          </exclusions>
       </dependency>
       <dependency>
@@ -245,8 +269,11 @@
          <optional>true</optional>
          <exclusions>
             <exclusion><groupId>com.sun.mail</groupId><artifactId>javax.mail</artifactId></exclusion>
-            <exclusion><groupId>javax.activation</groupId><artifactId>activation</artifactId></exclusion>
          </exclusions>
+      </dependency>
+      <dependency>
+         <groupId>org.springframework</groupId><artifactId>spring-web</artifactId><version>4.2.0.RELEASE</version>
+         <optional>true</optional>
       </dependency>
    </dependencies>
 </project>

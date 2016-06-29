@@ -15,6 +15,8 @@ import static org.junit.Assert.*;
 import mockit.internal.util.*;
 import static mockit.Deencapsulation.*;
 
+import static org.hamcrest.CoreMatchers.*;
+
 @SuppressWarnings("unused")
 public final class DeencapsulationTest
 {
@@ -26,8 +28,6 @@ public final class DeencapsulationTest
       final int initialValue = -1;
 
       private static final Integer constantField = 123;
-      private static final String compileTimeConstantField = "test";
-      static final boolean FLAG = false;
 
       private static StringBuilder buffer;
       private static char static1;
@@ -118,8 +118,7 @@ public final class DeencapsulationTest
       assertSame(anInstance.baseSet, listValue);
    }
 
-   @SuppressWarnings("unchecked")
-   @Test
+   @Test @SuppressWarnings("unchecked")
    public void getInstanceFieldByType()
    {
       anInstance.setStringField("by type");
@@ -154,8 +153,7 @@ public final class DeencapsulationTest
       getField(anInstance, int.class);
    }
 
-   @SuppressWarnings("unchecked")
-   @Test
+   @Test @SuppressWarnings("unchecked")
    public void getInheritedInstanceFieldByType()
    {
       Set<Boolean> fieldValueOnInstance = new HashSet<Boolean>();
@@ -315,18 +313,11 @@ public final class DeencapsulationTest
    }
 
    @Test
-   public void setStaticFinalFields() throws Exception
+   public void attemptToSetAStaticFinalField()
    {
+      thrown.expectCause(isA(IllegalAccessException.class));
+
       setField(Subclass.class, "constantField", 54);
-      setField(Subclass.class, "changed");
-      setField(Subclass.class, true);
-
-      assertEquals(54, getField(Subclass.class, "constantField"));
-      assertEquals("changed", getField(Subclass.class, String.class));
-      assertTrue(getField(Subclass.class, boolean.class));
-
-      //noinspection ConstantJUnitAssertArgument
-      assertFalse(Subclass.FLAG); // in this case, the compile-time constant gets embedded in client code
    }
 
    @Test
@@ -464,6 +455,18 @@ public final class DeencapsulationTest
       thrown.expectMessage(" argument 1");
 
       invoke(anInstance, "staticMethod", (short) 7, null, true);
+   }
+
+   @Test
+   public void invokeMethodWithNonMatchingArrayArguments()
+   {
+      thrown.expect(IllegalArgumentException.class);
+      thrown.expectMessage("No compatible method found");
+      thrown.expectMessage("int[]");
+      thrown.expectMessage("String[]");
+      thrown.expectMessage("java.util.List[]");
+
+      invoke(anInstance, "aMethod", "test", 1, 2.0, new int[0], new String[0], new List<?>[0], new ArrayList<Long>());
    }
 
    @Test
@@ -658,6 +661,15 @@ public final class DeencapsulationTest
       Object innerInstance = newInnerInstance(innerClass, anInstance, aList);
 
       assertTrue(innerClass.isInstance(innerInstance));
+   }
+
+   @Test
+   public void attemptToInstantiateNestedClassAsIfItWasInnerClass()
+   {
+      thrown.expect(IllegalArgumentException.class);
+      thrown.expectMessage("Subclass is not an inner class");
+
+      newInnerInstance(Subclass.class, this);
    }
 
    @Test(expected = InstantiationException.class)

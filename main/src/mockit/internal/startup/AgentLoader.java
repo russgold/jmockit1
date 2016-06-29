@@ -16,7 +16,7 @@ import com.sun.tools.attach.*;
 import com.sun.tools.attach.spi.*;
 import sun.tools.attach.*;
 
-final class AgentLoader
+public final class AgentLoader
 {
    private static final AttachProvider ATTACH_PROVIDER = new AttachProvider() {
       @Override @Nullable public String name() { return null; }
@@ -26,6 +26,7 @@ final class AgentLoader
    };
 
    @Nonnull private final String jarFilePath;
+   @Nullable private String pidForTargetVM;
 
    AgentLoader()
    {
@@ -36,7 +37,13 @@ final class AgentLoader
       jarFilePath = new PathToAgentJar().getPathToJarFile();
    }
 
-   void loadAgent()
+   public AgentLoader(@Nonnull String pid)
+   {
+      this();
+      pidForTargetVM = pid;
+   }
+
+   public void loadAgent(@Nullable String options)
    {
       VirtualMachine vm;
 
@@ -53,15 +60,15 @@ final class AgentLoader
          vm = attachToRunningVM();
       }
 
-      loadAgentAndDetachFromRunningVM(vm);
+      loadAgentAndDetachFromRunningVM(vm, options);
    }
 
    @Nonnull
-   private static VirtualMachine getVirtualMachineImplementationFromEmbeddedOnes()
+   private VirtualMachine getVirtualMachineImplementationFromEmbeddedOnes()
    {
       Class<? extends VirtualMachine> vmClass = findVirtualMachineClassAccordingToOS();
       Class<?>[] parameterTypes = {AttachProvider.class, String.class};
-      String pid = getProcessIdForRunningVM();
+      String pid = getProcessIdForTargetVM();
 
       try {
          // This is only done with Reflection to avoid the JVM pre-loading all the XyzVirtualMachine classes.
@@ -104,8 +111,12 @@ final class AgentLoader
    }
 
    @Nonnull
-   private static String getProcessIdForRunningVM()
+   private String getProcessIdForTargetVM()
    {
+      if (pidForTargetVM != null) {
+         return pidForTargetVM;
+      }
+
       String nameOfRunningVM = ManagementFactory.getRuntimeMXBean().getName();
       int p = nameOfRunningVM.indexOf('@');
       return nameOfRunningVM.substring(0, p);
@@ -125,9 +136,9 @@ final class AgentLoader
    }
 
    @Nonnull
-   private static VirtualMachine attachToRunningVM()
+   private VirtualMachine attachToRunningVM()
    {
-      String pid = getProcessIdForRunningVM();
+      String pid = getProcessIdForTargetVM();
 
       try {
          return VirtualMachine.attach(pid);
@@ -140,10 +151,10 @@ final class AgentLoader
       }
    }
 
-   private void loadAgentAndDetachFromRunningVM(@Nonnull VirtualMachine vm)
+   private void loadAgentAndDetachFromRunningVM(@Nonnull VirtualMachine vm, @Nullable String options)
    {
       try {
-         vm.loadAgent(jarFilePath, null);
+         vm.loadAgent(jarFilePath, options);
          vm.detach();
       }
       catch (AgentLoadException e) {

@@ -8,6 +8,10 @@ import java.io.*;
 import java.lang.instrument.*;
 import javax.annotation.*;
 
+import mockit.coverage.*;
+import mockit.coverage.standalone.*;
+import mockit.internal.*;
+import mockit.internal.expectations.mocking.*;
 import mockit.internal.expectations.transformation.*;
 import mockit.internal.state.*;
 import mockit.internal.util.*;
@@ -31,21 +35,16 @@ public final class Startup
     * In order for this to occur, the JVM must be started with "-javaagent:jmockit.jar" as a command line parameter
     * (assuming the jar file is in the current directory).
     * <p/>
-    * It is also possible to load other <em>instrumentation tools</em> at this time, by having set the "jmockit-tools"
-    * and/or "jmockit-mocks" system properties in the JVM command line.
-    * There are two types of instrumentation tools:
-    * <ol>
-    * <li>A {@link ClassFileTransformer class file transformer}, which will be instantiated and added to the JVM
-    * instrumentation service. Such a class must have a no-args constructor.</li>
-    * <li>An <em>external mock</em>, which should be a {@code MockUp} subclass with a no-args constructor.
-    * </ol>
+    * It is also possible to load user-specified mock-ups at this time, by having set the "mockups" system property.
     *
     * @param agentArgs not used
     * @param inst      the instrumentation service provided by the JVM
     */
-   public static void premain(String agentArgs, @Nonnull Instrumentation inst) throws IOException
+   public static void premain(@Nullable String agentArgs, @Nonnull Instrumentation inst) throws IOException
    {
-      initialize(true, inst);
+      if (!activateCodeCoverageIfRequested(agentArgs, inst)) {
+         initialize(true, inst);
+      }
    }
 
    private static void initialize(boolean applyStartupMocks, @Nonnull Instrumentation inst) throws IOException
@@ -57,19 +56,19 @@ public final class Startup
          inst.addTransformer(CachedClassfiles.INSTANCE, true);
 
          if (applyStartupMocks) {
-            applyStartupMocks();
+            applyStartupMocks(inst);
          }
 
          inst.addTransformer(new ExpectationsTransformer(inst));
       }
    }
 
-   private static void applyStartupMocks() throws IOException
+   private static void applyStartupMocks(@Nonnull Instrumentation inst) throws IOException
    {
       initializing = true;
 
       try {
-         new JMockitInitialization().initialize();
+         new JMockitInitialization().initialize(inst);
       }
       finally {
          initializing = false;
@@ -86,7 +85,7 @@ public final class Startup
     * @param inst      the instrumentation service provided by the JVM
     */
    @SuppressWarnings({"unused", "WeakerAccess"})
-   public static void agentmain(String agentArgs, @Nonnull Instrumentation inst) throws IOException
+   public static void agentmain(@Nullable String agentArgs, @Nonnull Instrumentation inst) throws IOException
    {
       if (!inst.isRedefineClassesSupported()) {
          throw new UnsupportedOperationException(
@@ -100,28 +99,53 @@ public final class Startup
       if (customCL != null) {
          reinitializeJMockitUnderCustomClassLoader(customCL);
       }
+
+      activateCodeCoverageIfRequested(agentArgs, inst);
+   }
+
+   private static boolean activateCodeCoverageIfRequested(@Nullable String agentArgs, @Nonnull Instrumentation inst)
+      throws FileNotFoundException
+   {
+      if ("coverage".equals(agentArgs)) {
+         try {
+            CoverageControl.create();
+
+            CodeCoverage coverage = CodeCoverage.create(true);
+            inst.addTransformer(coverage);
+
+            return true;
+         }
+         catch (Throwable t) {
+            PrintWriter out = new PrintWriter("coverage-failure.txt");
+            t.printStackTrace(out);
+            out.close();
+         }
+      }
+
+      return false;
    }
 
    private static void reinitializeJMockitUnderCustomClassLoader(@Nonnull ClassLoader customLoader)
    {
       Class<?> startupClass;
+      Class<?> mockingBridgeClass;
 
       try {
          startupClass = customLoader.loadClass(Startup.class.getName());
+         mockingBridgeClass = customLoader.loadClass(MockingBridge.class.getName());
       }
-      catch (ClassNotFoundException ignore) {
-         return;
-      }
+      catch (ClassNotFoundException ignore) { return; }
 
       System.out.println("JMockit: Reinitializing under custom class loader " + customLoader);
       FieldReflection.setField(startupClass, null, "instrumentation", instrumentation);
+      FieldReflection.setField(mockingBridgeClass, null, "hostClassName", MockedBridge.getHostClassName());
       MethodReflection.invoke(startupClass, (Object) null, "reapplyStartupMocks");
    }
 
+   @SuppressWarnings("ConstantConditions")
    private static void reapplyStartupMocks()
    {
-      MockingBridgeFields.setMockingBridgeFields();
-      try { applyStartupMocks(); } catch (IOException e) { throw new RuntimeException(e); }
+      try { applyStartupMocks(instrumentation); } catch (IOException e) { throw new RuntimeException(e); }
    }
 
    @Nonnull
@@ -132,44 +156,12 @@ public final class Startup
       return instrumentation;
    }
 
-   /**
-    * Only called from the coverage tool, when it is executed with {@code -javaagent:jmockit-coverage.jar} even though
-    * JMockit is in the classpath.
-    */
-   public static void initialize(@Nonnull Instrumentation inst) throws IOException
-   {
-      boolean fullJMockit = false;
-
-      try {
-         Class.forName("mockit.internal.expectations.transformation.ExpectationsTransformer");
-         fullJMockit = true;
-      }
-      catch (ClassNotFoundException ignored) {}
-
-      instrumentation = inst;
-
-      if (fullJMockit) {
-         MockingBridgeFields.createSyntheticFieldsInJREClassToHoldMockingBridges(inst);
-         initializing = true;
-
-         try {
-            new JMockitInitialization().initialize();
-         }
-         finally {
-            initializing = false;
-         }
-
-         inst.addTransformer(CachedClassfiles.INSTANCE, true);
-         inst.addTransformer(new ExpectationsTransformer(inst));
-      }
-   }
-
    public static boolean wasInitializedOnDemand() { return initializedOnDemand; }
 
    public static void verifyInitialization()
    {
       if (getInstrumentation() == null) {
-         new AgentLoader().loadAgent();
+         new AgentLoader().loadAgent(null);
          initializedOnDemand = true;
       }
    }
@@ -205,10 +197,11 @@ public final class Startup
          }
 
          try {
-            new AgentLoader().loadAgent();
+            new AgentLoader().loadAgent(null);
 
             if (!usingCustomCL) {
-               applyStartupMocks();
+               assert instrumentation != null;
+               applyStartupMocks(instrumentation);
             }
 
             return true;

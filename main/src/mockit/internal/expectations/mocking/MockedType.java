@@ -10,7 +10,7 @@ import javax.annotation.*;
 import static java.lang.reflect.Modifier.*;
 
 import mockit.*;
-import mockit.internal.expectations.injection.*;
+import mockit.internal.injection.*;
 import mockit.internal.state.*;
 import mockit.internal.util.*;
 
@@ -80,7 +80,7 @@ public final class MockedType implements InjectionPointProvider
 
    private void registerCascadingAsNeeded()
    {
-      if (isMockableType() && !(declaredType instanceof TypeVariable)) {
+      if (isMockableType() && !(declaredType instanceof TypeVariable<?>)) {
          TestRun.getExecutingTest().getCascadingTypes().add(fieldFromTestClass, declaredType, null);
       }
    }
@@ -102,6 +102,15 @@ public final class MockedType implements InjectionPointProvider
       mockId = parameterName == null ? "param" + paramIndex : parameterName;
 
       providedValue = getDefaultInjectableValue(injectableAnnotation);
+
+      if (providedValue == null && parameterType instanceof Class<?>) {
+         Class<?> parameterClass = (Class<?>) parameterType;
+
+         if (parameterClass.isPrimitive()) {
+            providedValue = DefaultValues.defaultValueForPrimitiveType(parameterClass);
+         }
+      }
+
       registerCascadingAsNeeded();
    }
 
@@ -148,7 +157,7 @@ public final class MockedType implements InjectionPointProvider
    @Nonnull
    public Class<?> getClassType()
    {
-      if (declaredType instanceof Class) {
+      if (declaredType instanceof Class<?>) {
          return (Class<?>) declaredType;
       }
 
@@ -168,14 +177,15 @@ public final class MockedType implements InjectionPointProvider
          return false;
       }
 
-      if (!(declaredType instanceof Class)) {
+      //noinspection SimplifiableIfStatement
+      if (!(declaredType instanceof Class<?>)) {
          return true;
       }
 
       return isMockableType((Class<?>) declaredType);
    }
 
-   private boolean isMockableType(@Nonnull  Class<?> classType)
+   private boolean isMockableType(@Nonnull Class<?> classType)
    {
       if (classType.isPrimitive() || classType.isArray() || classType == Integer.class) {
          return false;
@@ -213,6 +223,10 @@ public final class MockedType implements InjectionPointProvider
          return providedValue;
       }
 
+      if (providedValue == null) {
+         return value;
+      }
+
       Class<?> fieldType = field.getType();
 
       if (!fieldType.isPrimitive()) {
@@ -223,6 +237,9 @@ public final class MockedType implements InjectionPointProvider
 
       return value.equals(defaultValue) ? providedValue : value;
    }
+
+   @Nullable @Override
+   public Object getValue(@Nullable Object owner) { return getValueToInject(owner); }
 
    @Override
    public int hashCode()

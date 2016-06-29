@@ -7,6 +7,7 @@ package mockit.internal.startup;
 import java.lang.instrument.*;
 import java.security.*;
 import javax.annotation.*;
+import static java.lang.reflect.Modifier.*;
 
 import mockit.external.asm.*;
 import mockit.internal.*;
@@ -17,69 +18,66 @@ import static mockit.external.asm.Opcodes.*;
 
 final class MockingBridgeFields
 {
-   private static final MockingBridge[] MOCKING_BRIDGES = {MockedBridge.MB, MockupBridge.MB, MockMethodBridge.MB};
-
    private MockingBridgeFields() {}
 
-   static void createSyntheticFieldsInJREClassToHoldMockingBridges(@Nonnull Instrumentation inst)
+   static void createSyntheticFieldsInJREClassToHoldMockingBridges(@Nonnull Instrumentation instrumentation)
    {
-      ClassFileTransformer trans = new FieldAdditionTransformer();
-      inst.addTransformer(trans);
+      instrumentation.addTransformer(new FieldAdditionTransformer(instrumentation));
 
-      try {
-         NegativeArraySizeException.class.getName(); // loads a JRE class expected to not be loaded initially by the JVM
-      }
-      finally {
-         inst.removeTransformer(trans);
-      }
-
-      setMockingBridgeFields();
+      // Loads some JRE classes expected to not be loaded yet.
+      NegativeArraySizeException.class.getName();
+      javax.print.PrintException.class.getName();
    }
 
    private static final class FieldAdditionTransformer implements ClassFileTransformer
    {
+      private static final int FIELD_ACCESS = ACC_PUBLIC + ACC_STATIC + ACC_SYNTHETIC;
+      @Nonnull private final Instrumentation instrumentation;
+      private boolean fieldsAdded;
+
+      FieldAdditionTransformer(@Nonnull Instrumentation instrumentation) { this.instrumentation = instrumentation; }
+
       @Nullable @Override
       public byte[] transform(
          @Nullable ClassLoader loader, @Nonnull String className, @Nullable Class<?> classBeingRedefined,
          @Nullable ProtectionDomain protectionDomain, @Nonnull byte[] classfileBuffer)
       {
-         if (!"java/lang/NegativeArraySizeException".equals(className)) {
-            return null;
+         if (!fieldsAdded && loader == null) { // adds the fields to the first public JRE class to be loaded
+            ClassReader cr = new ClassReader(classfileBuffer);
+
+            if (isPublic(cr.getAccess())) {
+               fieldsAdded = true;
+               instrumentation.removeTransformer(this);
+               MockingBridge.setHostClassName(className);
+               return getModifiedJREClassWithAddedFields(cr);
+            }
          }
 
-         ClassReader cr = new ClassReader(classfileBuffer);
-         final ClassWriter cw = new ClassWriter(cr);
+         return null;
+      }
+
+      @Nonnull
+      private byte[] getModifiedJREClassWithAddedFields(@Nonnull ClassReader classReader)
+      {
+         final ClassWriter cw = new ClassWriter(classReader);
 
          ClassVisitor cv = new ClassVisitor(cw) {
             @Override
             public void visitEnd()
             {
-               int fieldAccess = ACC_PUBLIC + ACC_STATIC + ACC_SYNTHETIC;
+               addField(MockedBridge.MB);
+               addField(MockupBridge.MB);
+               addField(MockMethodBridge.MB);
+            }
 
-               for (MockingBridge mockingBridge : MOCKING_BRIDGES) {
-                  cw.visitField(fieldAccess, mockingBridge.id, "Ljava/lang/reflect/InvocationHandler;", null, null);
-               }
+            private void addField(@Nonnull MockingBridge mb)
+            {
+               cw.visitField(FIELD_ACCESS, mb.id, "Ljava/lang/reflect/InvocationHandler;", null, null);
             }
          };
 
-         cr.accept(cv, SKIP_FRAMES);
+         classReader.accept(cv, SKIP_FRAMES);
          return cw.toByteArray();
       }
-   }
-
-   static void setMockingBridgeFields()
-   {
-      for (MockingBridge mockingBridge : MOCKING_BRIDGES) {
-         setMockingBridgeField(mockingBridge);
-      }
-   }
-
-   private static void setMockingBridgeField(@Nonnull MockingBridge mockingBridge)
-   {
-      try {
-         NegativeArraySizeException.class.getDeclaredField(mockingBridge.id).set(null, mockingBridge);
-      }
-      catch (NoSuchFieldException ignore) {}
-      catch (IllegalAccessException e) { throw new RuntimeException(e); }
    }
 }
